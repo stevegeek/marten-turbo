@@ -12,6 +12,7 @@ module MartenTurbo
       Marten::Template::Tag.register "dom_id", Template::Tag::DomId
       Marten::Template::Tag.register "turbo_stream", Template::Tag::TurboStream
       Marten::Template::Tag.register "turbo_frame", Template::Tag::TurboFrame
+      Marten::Template::Tag.register "turbo_refreshes_with", Template::Tag::TurboRefreshesWith
     end
   end
 end
