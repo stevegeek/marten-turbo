@@ -13,6 +13,7 @@ module MartenTurbo
       Marten::Template::Tag.register "turbo_stream", Template::Tag::TurboStream
       Marten::Template::Tag.register "turbo_frame", Template::Tag::TurboFrame
       Marten::Template::Tag.register "turbo_refreshes_with", Template::Tag::TurboRefreshesWith
+      Marten::Template::Tag.register "turbo_stream_from", Template::Tag::TurboStreamFrom
     end
   end
 end

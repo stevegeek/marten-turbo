@@ -4,6 +4,8 @@ version: 0.3.0
 dependencies:
   marten:
     github: martenframework/marten
+  marten_cable:
+    github: stevegeek/marten-cable
 
 development_dependencies:
   ameba:
