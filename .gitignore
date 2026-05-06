@@ -12,6 +12,4 @@
 /shard.lock
 .spec.env.json
 
-# Per-machine override that points the `marten` dependency at a local
-# path (../marten-src) for development. Don't ship to the fork.
 /shard.override.yml
