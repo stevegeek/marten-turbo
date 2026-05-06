@@ -71,6 +71,15 @@ describe MartenTurbo::TurboStream do
     end
   end
 
+  describe "#refresh" do
+    it "adds a refresh action to the streams with no target and no template body" do
+      stream = MartenTurbo::TurboStream.new
+      stream.refresh
+
+      stream.to_s.should eq %(<turbo-stream action="refresh"></turbo-stream>)
+    end
+  end
+
   describe "Class methods" do
     it "::append returns a new TurboStream with the append action" do
       stream = MartenTurbo::TurboStream.append("messages", "<div>Message 3</div>")
@@ -95,6 +104,12 @@ describe MartenTurbo::TurboStream do
       stream.to_s.should contain "<turbo-stream action=\"remove\" target=\"tag_#{tag.pk!}\">"
       stream.to_s.should_not contain "<template>"
       stream.to_s.should contain "</turbo-stream>"
+    end
+
+    it "::refresh returns a new TurboStream with a refresh action and no target" do
+      stream = MartenTurbo::TurboStream.refresh
+
+      stream.to_s.should eq %(<turbo-stream action="refresh"></turbo-stream>)
     end
   end
 end

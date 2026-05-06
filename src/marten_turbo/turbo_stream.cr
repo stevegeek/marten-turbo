@@ -2,7 +2,7 @@ module MartenTurbo
   class TurboStream
     include Identifiable
 
-    ACTIONS = %w[append prepend replace update remove before after]
+    ACTIONS = %w[append prepend replace update remove before after refresh]
 
     def initialize
       @streams = [] of String
@@ -27,7 +27,17 @@ module MartenTurbo
     # stream = MartenTurbo::TurboStream.new
     # stream.action("append", "messages", "<div>New Message</div>")
     # ```
+    #
+    # The `"refresh"` action is special-cased: it produces a `<turbo-stream
+    # action="refresh"></turbo-stream>` element with no `target` attribute and
+    # no `<template>` body, regardless of the values passed for `target` and
+    # `content`.
     def action(action, target : String | Marten::Model, content)
+      if action.to_s == "refresh"
+        @streams << %(<turbo-stream action="refresh"></turbo-stream>)
+        return self
+      end
+
       target_id = target.is_a?(String) ? target : dom_id(target.as(Marten::Model))
       @streams << <<-TURBO_STREAM_TAG
           <turbo-stream action="#{action}" target="#{target_id}">
@@ -49,19 +59,37 @@ module MartenTurbo
     end
 
     {% for action in ACTIONS %}
-      # Adds a turbo stream {{ action.id }} action to the streams array.
-      def {{ action.id }}(target, content : String? = nil)
-        action("{{ action.id }}", target, content)
+      {% if action != "refresh" %}
+        # Adds a turbo stream {{ action.id }} action to the streams array.
+        def {{ action.id }}(target, content : String? = nil)
+          action("{{ action.id }}", target, content)
 
-        self
-      end
+          self
+        end
 
-      # Creates a a turbo stream instance with a {{ action.id }} action
-      # already in its array.
-      def self.{{ action.id }}(target, content : String? = nil)
-        self.new.action("{{ action.id }}", target, content)
-      end
+        # Creates a a turbo stream instance with a {{ action.id }} action
+        # already in its array.
+        def self.{{ action.id }}(target, content : String? = nil)
+          self.new.action("{{ action.id }}", target, content)
+        end
+      {% end %}
     {% end %}
+
+    # Adds a turbo stream `refresh` action to the streams array.
+    #
+    # The `refresh` action (introduced in Turbo 8) takes no target and no
+    # content: it instructs the client to re-fetch the current page so that
+    # the response can be morphed into the existing DOM.
+    def refresh
+      @streams << %(<turbo-stream action="refresh"></turbo-stream>)
+
+      self
+    end
+
+    # Creates a new TurboStream instance with a single `refresh` action.
+    def self.refresh
+      self.new.refresh
+    end
 
     def to_s
       @streams.join("\n")
