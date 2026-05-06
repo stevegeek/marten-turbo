@@ -35,7 +35,10 @@ module MartenTurbo
           if parts[-1] == "do"
             @turbo_stream_nodes = parser.parse(up_to: {"end_turbo_stream"})
             parser.shift_token
-            kwargs_source_parts = parts[2...-2]
+            # Drop only the trailing "do"; everything from the target onward
+            # is kwarg source. (Earlier `parts[2...-2]` used an exclusive
+            # range and silently dropped the last kwarg's value.)
+            kwargs_source_parts = parts[2..-2]
           else
             kwargs_source_parts = parts[2..]
           end

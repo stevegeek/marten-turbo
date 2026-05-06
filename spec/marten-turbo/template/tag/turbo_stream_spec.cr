@@ -173,5 +173,24 @@ describe MartenTurbo::Template::Tag::TurboStream do
       content.should contain "<div class=\"tag_#{other_tag.pk}\">"
       content.should contain "Other Tag"
     end
+
+    it "preserves the last kwarg's value when do-block + kwargs combine" do
+      # Regression: a previous `parts[2...-2]` exclusive-range slice
+      # silently dropped the value of the last kwarg in the do-block
+      # branch (`partial: "tags/tag.html" do %}...` saw `partial:` with
+      # no value, leading to no rendered partial).
+      other_tag = Tag.create!(name: "Combo Tag")
+
+      template = Marten::Template::Template.new(
+        "{% turbo_stream \"replace\" \"tags\" partial: \"tags/tag.html\" locals: {tag: other_tag} do %}IGNORED{% end_turbo_stream %}"
+      )
+
+      context = Marten::Template::Context{"other_tag" => other_tag}
+
+      content = template.render(context)
+      content.should contain %(<turbo-stream action="replace" target="tags">)
+      content.should contain %(<div class="tag_#{other_tag.pk}">)
+      content.should contain "Combo Tag"
+    end
   end
 end
