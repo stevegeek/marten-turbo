@@ -181,9 +181,13 @@ describe MartenTurbo::Template::Tag::TurboStream do
       # no value, leading to no rendered partial).
       other_tag = Tag.create!(name: "Combo Tag")
 
-      template = Marten::Template::Template.new(
-        "{% turbo_stream \"replace\" \"tags\" partial: \"tags/tag.html\" locals: {tag: other_tag} do %}IGNORED{% end_turbo_stream %}"
-      )
+      source = String.build do |io|
+        io << %({% turbo_stream "replace" "tags" )
+        io << %(partial: "tags/tag.html" locals: {tag: other_tag} do %})
+        io << %(IGNORED)
+        io << %({% end_turbo_stream %})
+      end
+      template = Marten::Template::Template.new(source)
 
       context = Marten::Template::Context{"other_tag" => other_tag}
 

@@ -24,13 +24,13 @@ module MartenTurbo
     # Returns the unsigned stream name if `signed` was produced by
     # `sign` with the current secret_key, otherwise nil.
     def verify(signed : String?) : String?
-      return nil if signed.nil? || signed.empty?
+      return if signed.nil? || signed.empty?
 
       message, _, signature = signed.partition("--")
-      return nil if message.empty? || signature.empty?
+      return if message.empty? || signature.empty?
 
       expected = compute_digest(message)
-      return nil unless secure_compare(expected, signature)
+      return unless secure_compare(expected, signature)
 
       Base64.decode_string(message)
     rescue Base64::Error

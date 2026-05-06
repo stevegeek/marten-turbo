@@ -88,7 +88,7 @@ module MartenTurbo
 
     # Creates a new TurboStream instance with a single `refresh` action.
     def self.refresh
-      self.new.refresh
+      new.refresh
     end
 
     def to_s

@@ -65,38 +65,38 @@ module MartenTurbo
 
       private def _broadcast_stream_name : String
         {% if target.is_a?(SymbolLiteral) %}
-          related = self.{{target.id}}
+          related = self.{{ target.id }}
           if related.nil?
             raise {{ "broadcasts_to(#{target}): #{@type.name}##{target.id} returned nil; can't compute stream name" }}
           end
           ::MartenTurbo.stream_name(related)
         {% else %}
-          {{target}}.to_s
+          {{ target }}.to_s
         {% end %}
       end
 
       private def _broadcast_create
         ::MartenTurbo.broadcast_append_to(
           _broadcast_stream_name,
-          target:  {{container_value}},
-          partial: {{partial_value}},
-          locals:  { {{member_value}} => self },
+          target:  {{ container_value }},
+          partial: {{ partial_value }},
+          locals:  { {{ member_value }} => self },
         )
       end
 
       private def _broadcast_update
         ::MartenTurbo.broadcast_replace_to(
           _broadcast_stream_name,
-          target:  "{{member_value.id}}_#{pk}",
-          partial: {{partial_value}},
-          locals:  { {{member_value}} => self },
+          target:  "{{ member_value.id }}_#{pk}",
+          partial: {{ partial_value }},
+          locals:  { {{ member_value }} => self },
         )
       end
 
       private def _broadcast_delete
         ::MartenTurbo.broadcast_remove_to(
           _broadcast_stream_name,
-          target: "{{member_value.id}}_#{pk}",
+          target: "{{ member_value.id }}_#{pk}",
         )
       end
     end

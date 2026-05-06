@@ -36,7 +36,7 @@ describe MartenTurbo::Verifier do
 
     it "rejects a tampered message" do
       signed = MartenTurbo::Verifier.sign("messages")
-      msg, _, sig = signed.partition("--")
+      _, _, sig = signed.partition("--")
       tampered = "#{Base64.urlsafe_encode("messages_evil", padding: false)}--#{sig}"
       MartenTurbo::Verifier.verify(tampered).should be_nil
     end

@@ -15,7 +15,7 @@ describe "{% turbo_stream_from %}" do
     template = Marten::Template::Template.new(%({% turbo_stream_from "lobby_room" %}))
     rendered = template.render(Marten::Template::Context.new)
 
-    match = rendered.match(/signed-stream-name="([^"]+)"/).not_nil!
+    match = rendered.match!(/signed-stream-name="([^"]+)"/)
     signed = match[1]
     MartenTurbo::Verifier.verify(signed).should eq("lobby_room")
   end
@@ -31,7 +31,7 @@ describe "{% turbo_stream_from %}" do
     context = Marten::Template::Context.from({"name" => "from_var"})
     rendered = template.render(context)
 
-    match = rendered.match(/signed-stream-name="([^"]+)"/).not_nil!
+    match = rendered.match!(/signed-stream-name="([^"]+)"/)
     MartenTurbo::Verifier.verify(match[1]).should eq("from_var")
   end
 end

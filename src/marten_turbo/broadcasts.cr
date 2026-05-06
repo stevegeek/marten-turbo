@@ -44,7 +44,7 @@ module MartenTurbo
     ::Cable.server.publish(stream, markup)
   end
 
-  private def self.render_partial(name : String, locals : Hash | NamedTuple | Nil) : String
+  private def self.render_partial(name : String, locals : Hash | NamedTuple?) : String
     template = Marten.templates.get_template(name)
     values = {} of String => Marten::Template::Value
 

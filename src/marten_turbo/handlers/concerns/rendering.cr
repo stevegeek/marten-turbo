@@ -22,7 +22,7 @@ module MartenTurbo
         end
 
         def render_turbo_stream(
-          context : Hash | NamedTuple | Nil | Marten::Template::Context = nil,
+          context : Hash | NamedTuple | Marten::Template::Context? = nil,
           status : ::HTTP::Status | Int32 = 200,
         )
           if stream_obj = turbo_stream
@@ -38,7 +38,7 @@ module MartenTurbo
         )
         end
 
-        def turbo_stream : MartenTurbo::TurboStream | Nil
+        def turbo_stream : MartenTurbo::TurboStream?
           nil
         end
 
@@ -46,7 +46,7 @@ module MartenTurbo
           !!(turbo_stream || turbo_stream_name)
         end
 
-        def turbo_stream_name : String | Nil
+        def turbo_stream_name : String?
           self.class.turbo_stream_name
         end
       end
