@@ -13,14 +13,15 @@ describe MartenTurbo::Template::Tag::TurboStream do
       end
     end
 
-    it "raises if turbo_stream does not define a target_id" do
+    it "raises at render time if a non-refresh action is used without a target_id" do
       parser = Marten::Template::Parser.new("{% turbo_stream 'append' %}")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream 'append'")
 
       expect_raises(
         Marten::Template::Errors::InvalidSyntax,
         "Malformed turbo_stream tag: you must define an action and a target id"
       ) do
-        MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream 'append'")
+        tag.render(Marten::Template::Context.new)
       end
     end
 
@@ -122,6 +123,55 @@ describe MartenTurbo::Template::Tag::TurboStream do
       tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream.append 'tags' do")
 
       tag.render(Marten::Template::Context.new).should contain "<p>some content</p>"
+    end
+
+    it "properly renders a refresh action without a target" do
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream 'refresh'")
+
+      tag.render(Marten::Template::Context.new).should eq %(<turbo-stream action="refresh"></turbo-stream>)
+    end
+
+    it "properly renders a refresh action when the action expression resolves to 'refresh' at render time" do
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream stream_action")
+
+      context = Marten::Template::Context{"stream_action" => "refresh"}
+
+      tag.render(context).should eq %(<turbo-stream action="refresh"></turbo-stream>)
+    end
+
+    it "renders a partial through the partial: kwarg as an alias for template:" do
+      tag_model = Tag.create!(name: "Marten Turbo")
+
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(
+        parser,
+        "turbo_stream \"replace\" \"tags\" partial: \"tags/tag.html\""
+      )
+
+      context = Marten::Template::Context{"tag" => tag_model}
+
+      content = tag.render(context)
+      content.should contain "<turbo-stream action=\"replace\" target=\"tags\">"
+      content.should contain "<div class=\"tag_#{tag_model.pk}\">"
+      content.should contain "Marten Turbo"
+    end
+
+    it "exposes locals: variables to the rendered partial" do
+      other_tag = Tag.create!(name: "Other Tag")
+
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(
+        parser,
+        "turbo_stream \"replace\" \"tags\" partial: \"tags/tag.html\" locals: {tag: other_tag}"
+      )
+
+      context = Marten::Template::Context{"other_tag" => other_tag}
+
+      content = tag.render(context)
+      content.should contain "<div class=\"tag_#{other_tag.pk}\">"
+      content.should contain "Other Tag"
     end
   end
 end
