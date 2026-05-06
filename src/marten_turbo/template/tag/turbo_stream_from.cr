@@ -26,7 +26,8 @@ module MartenTurbo
         end
 
         def render(context : Marten::Template::Context) : String
-          stream_name = @stream_filter.resolve(context).to_s
+          raw = @stream_filter.resolve(context).raw
+          stream_name = MartenTurbo.stream_name(raw)
           signed = MartenTurbo::Verifier.sign(stream_name)
           %(<turbo-cable-stream-source channel="MartenTurbo::StreamsChannel" ) +
             %(signed-stream-name="#{signed}"></turbo-cable-stream-source>)

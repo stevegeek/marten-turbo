@@ -9,7 +9,8 @@ module MartenTurbo
   # `MartenTurbo.broadcast_*` reaches every subscriber for free.
   class StreamsChannel < ::Cable::Channel
     def subscribed
-      signed = params["signed_stream_name"]?.try(&.as_s?)
+      raw = params["signed_stream_name"]?
+      signed = raw.is_a?(String) ? raw : nil
       stream_name = Verifier.verify(signed)
 
       if stream_name.nil?

@@ -2,7 +2,9 @@ require "marten_cable"
 
 require "./marten_turbo/verifier"
 require "./marten_turbo/streams_channel"
+require "./marten_turbo/stream_name"
 require "./marten_turbo/broadcasts"
+require "./marten_turbo/broadcastable"
 
 require "./marten_turbo/app"
 
