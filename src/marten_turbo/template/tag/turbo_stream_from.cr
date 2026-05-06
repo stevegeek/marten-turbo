@@ -1,14 +1,18 @@
 module MartenTurbo
   module Template
     module Tag
-      # `{% turbo_stream_from "stream_name" %}` — emits the
-      # `<turbo-cable-stream-source>` custom element shipped with Turbo's
-      # JS. The element subscribes to MartenTurbo::StreamsChannel over
-      # the open Cable WebSocket, naming the (signed) stream so
-      # broadcasts reach the page.
+      # `{% turbo_stream_from name %}` — emits a `<turbo-cable-stream-source>`
+      # custom element which (on the client) subscribes to
+      # MartenTurbo::StreamsChannel over the open Cable WebSocket so
+      # broadcasts to the named stream reach the page.
       #
-      # The stream name is signed at render time; the channel verifies
-      # it on subscribe so a hostile client can't subscribe to arbitrary
+      # `name` may be a String literal/variable or a Marten::Model
+      # instance — models are resolved through `MartenTurbo.stream_name`
+      # to their `cable_stream_name`, so `{% turbo_stream_from @room %}`
+      # matches `broadcasts_to :room` on a Message model automatically.
+      #
+      # The stream name is HMAC-signed at render time; the channel
+      # verifies on subscribe so clients can't subscribe to arbitrary
       # streams just by guessing names.
       class TurboStreamFrom < Marten::Template::Tag::Base
         include Marten::Template::Tag::CanSplitSmartly

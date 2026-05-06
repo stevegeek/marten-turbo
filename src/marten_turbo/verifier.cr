@@ -44,8 +44,8 @@ module MartenTurbo
       )
     end
 
-    # Constant-time byte comparison. Avoids leaking signature length
-    # via early-return on mismatch — short-lived but worth doing.
+    # Byte-by-byte comparison that doesn't short-circuit on the first
+    # mismatch — avoids timing oracles on the signature.
     private def secure_compare(a : String, b : String) : Bool
       return false if a.bytesize != b.bytesize
       result = 0_u8
