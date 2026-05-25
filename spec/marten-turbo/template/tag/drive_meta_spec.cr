@@ -67,3 +67,28 @@ describe MartenTurbo::Template::Tag::TurboExemptsPageFromPreview do
     )
   end
 end
+
+# L5: lock in the registration wiring in `MartenTurbo::App#setup` so that
+# renames in `app.cr` (or accidental copy-paste collisions among the three
+# meta tags) are caught at spec time. Each tag's per-render output is
+# already exercised above; these checks specifically guard the
+# `Marten::Template::Tag.register "<key>", <Klass>` mappings.
+describe "drive-meta tag registration (L5)" do
+  it "registers turbo_page_requires_reload under the right key" do
+    Marten::Template::Tag.get("turbo_page_requires_reload").should eq(
+      MartenTurbo::Template::Tag::TurboPageRequiresReload
+    )
+  end
+
+  it "registers turbo_exempts_page_from_cache under the right key" do
+    Marten::Template::Tag.get("turbo_exempts_page_from_cache").should eq(
+      MartenTurbo::Template::Tag::TurboExemptsPageFromCache
+    )
+  end
+
+  it "registers turbo_exempts_page_from_preview under the right key" do
+    Marten::Template::Tag.get("turbo_exempts_page_from_preview").should eq(
+      MartenTurbo::Template::Tag::TurboExemptsPageFromPreview
+    )
+  end
+end

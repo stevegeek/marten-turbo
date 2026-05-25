@@ -34,7 +34,7 @@ Lint/LiteralInInterpolation:
   Enabled: true
 
 Lint/NotNil:
-  Enabled: false
+  Enabled: true
 
 Lint/PercentArrays:
   Enabled: true
@@ -72,13 +72,14 @@ Lint/UselessConditionInWhen:
   Enabled: true
 
 Metrics/CyclomaticComplexity:
-  Enabled: false
+  Enabled: true
+  MaxComplexity: 20
 
 Naming/AccessorMethodName:
   Enabled: false
 
 Naming/BlockParameterName:
-  Enabled: false
+  Enabled: true
 
 Performance/AnyAfterFilter:
   Enabled: true
