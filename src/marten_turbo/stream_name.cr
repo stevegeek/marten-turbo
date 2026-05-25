@@ -6,11 +6,15 @@ module MartenTurbo
   #   so {% turbo_stream_from room %} matches `broadcasts_to :room` on
   #   Message
   # - Anything else falls back to its `.to_s`
+  # Phase 2 M1+M2: snake_cases the class name via `MartenTurbo.dom_class_name`,
+  # so a model that doesn't `include Broadcastable` still produces the same
+  # stream name shape as `Broadcastable#cable_stream_name` and `dom_id` (e.g.
+  # `chat_room_42`, not `chatroom_42`).
   def self.stream_name(value : Marten::Model) : String
     if value.responds_to?(:cable_stream_name)
       value.cable_stream_name
     else
-      "#{value.class.name.gsub("::", "_").downcase}_#{value.pk}"
+      "#{::MartenTurbo.dom_class_name(value.class)}_#{value.pk}"
     end
   end
 

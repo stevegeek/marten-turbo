@@ -45,8 +45,12 @@ module MartenTurbo
     # Default per-record stream identifier used by `{% turbo_stream_from
     # record %}`. Override in your model if you want something other than
     # `<class_underscore>_<pk>`.
+    #
+    # Phase 2 M1+M2: snake_cases the class name via the central
+    # `MartenTurbo.dom_class_name` helper, so this stays in sync with
+    # `dom_id` and the `broadcasts_to` macro defaults.
     def cable_stream_name : String
-      "#{self.class.name.gsub("::", "_").downcase}_#{pk}"
+      "#{::MartenTurbo.dom_class_name(self.class)}_#{pk!}"
     end
 
     macro broadcasts_to(target, partial = nil, container = nil, member = nil)
@@ -84,10 +88,14 @@ module MartenTurbo
         )
       end
 
+      # Phase 2 M6: `pk!` (not `pk`) so an unpersisted record (or one whose
+      # PK is unexpectedly nil at callback time) raises `NilAssertionError`
+      # with a clear cause instead of silently broadcasting a target like
+      # `"chat_room_"` that no element can possibly match.
       private def _broadcast_update
         ::MartenTurbo.broadcast_replace_to(
           _broadcast_stream_name,
-          target:  "{{ member_value.id }}_#{pk}",
+          target:  "{{ member_value.id }}_#{pk!}",
           partial: {{ partial_value }},
           locals:  { {{ member_value }} => self },
         )
@@ -96,7 +104,7 @@ module MartenTurbo
       private def _broadcast_delete
         ::MartenTurbo.broadcast_remove_to(
           _broadcast_stream_name,
-          target: "{{ member_value.id }}_#{pk}",
+          target: "{{ member_value.id }}_#{pk!}",
         )
       end
     end

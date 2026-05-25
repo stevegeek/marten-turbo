@@ -10,4 +10,16 @@ class BroadcastedTag < Marten::Model
   template_attributes :id, :name
 
   broadcasts_to "broadcasted_tags"
+
+  # Phase 2 M6 hook: exposes the private after-commit broadcasts to specs so
+  # we can prove `pk!` raises a clear `NilAssertionError` when the record's
+  # pk is unexpectedly nil at broadcast time, instead of silently publishing
+  # a target like `"broadcasted_tag_"` that matches no element.
+  def spec_invoke_broadcast_update
+    _broadcast_update
+  end
+
+  def spec_invoke_broadcast_delete
+    _broadcast_delete
+  end
 end

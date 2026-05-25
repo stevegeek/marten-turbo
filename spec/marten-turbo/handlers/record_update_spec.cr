@@ -114,6 +114,60 @@ describe MartenTurbo::Handlers::RecordUpdate do
       response.content.strip.should contain "<div>updatedtag</div>"
       response.content.strip.should contain "</turbo-stream>"
     end
+
+    # Phase 2 M3: invalid-schema Turbo POST should render
+    # `invalid_turbo_stream_name` at 422, not the plain template.
+    it "renders the invalid turbo stream template at 422 when schema validation fails on a Turbo request" do
+      tag = Tag.create(name: "oldtag")
+
+      params = Marten::Routing::MatchParameters{"pk" => tag.id!}
+      request = Marten::HTTP::Request.new(
+        ::HTTP::Request.new(
+          method: "POST",
+          resource: "",
+          headers: HTTP::Headers{
+            "Accept"       => "text/vnd.turbo-stream.html",
+            "Host"         => "example.com",
+            "Content-Type" => "application/x-www-form-urlencoded",
+          },
+          body: "name=" # explicit blank ⇒ schema invalid (initial_data is overridden)
+        )
+      )
+      handler = MartenTurbo::Handlers::RecordUpdateSpec::TestInvalidFormHandler.new(request, params)
+
+      response = handler.post
+
+      response.status.should eq 422
+      response.content_type.should eq MartenTurbo::TURBO_CONTENT_TYPE
+      response.content.should contain "<turbo-stream action=\"replace\""
+    end
+
+    # H1 regression: prior `request.turbo?` matched `*/*`, so realistic browser
+    # POSTs returned `text/vnd.turbo-stream.html` markup instead of a redirect.
+    it "redirects to the success route on a realistic-browser Accept header (H1 regression)" do
+      tag = Tag.create(name: "oldtag")
+
+      params = Marten::Routing::MatchParameters{"pk" => tag.id!}
+      request = Marten::HTTP::Request.new(
+        ::HTTP::Request.new(
+          method: "POST",
+          resource: "",
+          headers: HTTP::Headers{
+            "Accept"       => "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Host"         => "example.com",
+            "Content-Type" => "application/x-www-form-urlencoded",
+          },
+          body: "name=updatedtag"
+        )
+      )
+      handler = MartenTurbo::Handlers::RecordUpdateSpec::TestHandler.new(request, params)
+
+      response = handler.post
+
+      response.should be_a Marten::HTTP::Response::Found
+      response.as(Marten::HTTP::Response::Found).headers["Location"].should eq Marten.routes.reverse("dummy")
+      tag.reload.name.should eq "updatedtag"
+    end
   end
 end
 
@@ -131,5 +185,15 @@ module MartenTurbo::Handlers::RecordUpdateSpec
     schema TagCreateSchema
     success_route_name "dummy"
     template_name "tags/update.html"
+  end
+
+  # Phase 2 M3 fixture.
+  class TestInvalidFormHandler < MartenTurbo::Handlers::RecordUpdate
+    model Tag
+    schema TagCreateSchema
+    success_route_name "dummy"
+    template_name "tags/update.html"
+    turbo_stream_name "tags/update.turbo_stream.html"
+    invalid_turbo_stream_name "tags/invalid_form.turbo_stream.html"
   end
 end

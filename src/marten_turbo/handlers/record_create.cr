@@ -41,6 +41,19 @@ module MartenTurbo
           Marten::HTTP::Response::Found.new success_url
         end
       end
+
+      # Phase 2 M3: Turbo-aware failure path. A failed form POST from a Turbo
+      # client should ideally render a turbo-stream that targets the form
+      # frame (`replace` action) so Turbo can swap the form in place. Falls
+      # back to the parent's plain-template render at 422 for non-Turbo
+      # requests, matching turbo-rails' behaviour.
+      def process_invalid_schema
+        if request.turbo? && (template_name = invalid_turbo_stream_name)
+          turbo_stream(template_name, context: context, status: 422)
+        else
+          super
+        end
+      end
     end
   end
 end

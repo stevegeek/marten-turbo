@@ -2,6 +2,23 @@ require "../../spec_helper"
 
 describe MartenTurbo::Template::Tag::TurboStream do
   describe "::new" do
+    # Phase 2 (dot-syntax follow-up): the undocumented
+    # `{% turbo_stream.append "tags" %}` form silently mis-parsed before
+    # Phase 1 (it treated `"tags"` as the *action* and ignored `.append`).
+    # Phase 1's ACTIONS whitelist would have caught it at render time as
+    # "Unknown Turbo Stream action: tags", but the parser-level rejection
+    # is clearer.
+    it "rejects the deprecated dot-syntax with a migration message" do
+      parser = Marten::Template::Parser.new("")
+
+      expect_raises(
+        Marten::Template::Errors::InvalidSyntax,
+        /Dot-syntax .* is not supported.*Use `\{% turbo_stream/
+      ) do
+        MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream.append \"tags\"")
+      end
+    end
+
     it "raises if turbo_stream does not define an action" do
       parser = Marten::Template::Parser.new("")
 
@@ -63,12 +80,17 @@ describe MartenTurbo::Template::Tag::TurboStream do
     end
 
     it "properly renders a turbo-stream tag with correct specified template" do
+      # Updated for H4: the old `turbo_stream.append "tags" template: …` dot-syntax
+      # form passed `"tags"` as the action (and silently produced
+      # `<turbo-stream action="tags" target="">`); ACTIONS validation now catches
+      # that. The supported form is `turbo_stream "<action>" "<target>" …`,
+      # matching the README and the other specs in this file.
       tag_model = Tag.create!(name: "Marten Turbo")
 
       parser = Marten::Template::Parser.new("")
       tag = MartenTurbo::Template::Tag::TurboStream.new(
         parser,
-        "turbo_stream.append \"tags\" template: \"tags/tag.html\""
+        "turbo_stream \"append\" \"tags\" template: \"tags/tag.html\""
       )
 
       context = Marten::Template::Context{"tag" => tag_model}
@@ -84,7 +106,7 @@ describe MartenTurbo::Template::Tag::TurboStream do
       parser = Marten::Template::Parser.new("")
       tag = MartenTurbo::Template::Tag::TurboStream.new(
         parser,
-        "turbo_stream.append \"tags\" template: \"tags/not_existing_tag.html\""
+        "turbo_stream \"append\" \"tags\" template: \"tags/not_existing_tag.html\""
       )
 
       context = Marten::Template::Context{"tag" => tag_model}
@@ -101,13 +123,16 @@ describe MartenTurbo::Template::Tag::TurboStream do
       tag_model = Tag.create!(name: "Marten Turbo")
 
       parser = Marten::Template::Parser.new("")
-      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream.append \"tags\" template: 1")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(
+        parser,
+        "turbo_stream \"append\" \"tags\" template: 1"
+      )
 
       context = Marten::Template::Context{"tag" => tag_model}
 
       expect_raises(
         Marten::Template::Errors::UnsupportedValue,
-        "Template name must resolve to a string, git a Int32 instead."
+        "Template name must resolve to a string, got a Int32 instead."
       ) do
         tag.render(context)
       end
@@ -120,7 +145,7 @@ describe MartenTurbo::Template::Tag::TurboStream do
           {% end_turbo_stream %}
           TEMPLATE
       )
-      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream.append 'tags' do")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream 'append' 'tags' do")
 
       tag.render(Marten::Template::Context.new).should contain "<p>some content</p>"
     end
@@ -172,6 +197,66 @@ describe MartenTurbo::Template::Tag::TurboStream do
       content = tag.render(context)
       content.should contain "<div class=\"tag_#{other_tag.pk}\">"
       content.should contain "Other Tag"
+    end
+
+    # H4 regression: an unknown action used to flow straight through to the
+    # `action="…"` attribute, letting `{% turbo_stream 'evil"><script>' x %}`
+    # inject HTML.
+    it "raises InvalidActionError when the template tag is rendered with an unknown action" do
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream 'evil' 'tag'")
+
+      expect_raises(MartenTurbo::InvalidActionError, /Unknown Turbo Stream action/) do
+        tag.render(Marten::Template::Context.new)
+      end
+    end
+
+    it "HTML-escapes a target value rendered through the template tag" do
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(parser, "turbo_stream 'append' target_value")
+
+      context = Marten::Template::Context{"target_value" => %(tag" onclick="alert(1))}
+      content = tag.render(context)
+
+      content.should contain "&quot;"
+      content.should_not contain %(onclick="alert(1)")
+    end
+
+    # Phase 2 M7: the original `LOCALS_RE` regex (`[^{}]*`) silently
+    # mis-parsed *any* nested `{}` — `locals: {tag: other_tag, body: "}"}`
+    # captured only up to the first `}` inside the string and treated the
+    # remainder as outer-kwargs source. The replacement scanner walks
+    # brace depth while ignoring `{` / `}` inside `"…"` / `'…'`, so a value
+    # containing a literal `}` round-trips. (Hash-literal values themselves
+    # are still rejected by Marten's `FilterExpression` parser — that's a
+    # template-engine constraint, not a parser-scanner bug.)
+    it "tolerates a string `locals:` value containing a `}` (M7 brace-scanner)" do
+      parser = Marten::Template::Parser.new("")
+      tag = MartenTurbo::Template::Tag::TurboStream.new(
+        parser,
+        %(turbo_stream "replace" "tags" partial: "tags/tag.html" locals: {tag: other_tag, json: "}"})
+      )
+
+      other_tag = Tag.create!(name: "Closer")
+      context = Marten::Template::Context{"other_tag" => other_tag}
+
+      content = tag.render(context)
+      content.should contain "<div class=\"tag_#{other_tag.pk}\">"
+      content.should contain "Closer"
+    end
+
+    it "raises a clear error when the `locals:` hash literal is unterminated" do
+      parser = Marten::Template::Parser.new("")
+
+      expect_raises(
+        Marten::Template::Errors::InvalidSyntax,
+        /unterminated `locals:.*hash literal/i
+      ) do
+        MartenTurbo::Template::Tag::TurboStream.new(
+          parser,
+          %(turbo_stream "replace" "tags" partial: "tags/tag.html" locals: {tag: other_tag, extra: 1)
+        )
+      end
     end
 
     it "preserves the last kwarg's value when do-block + kwargs combine" do

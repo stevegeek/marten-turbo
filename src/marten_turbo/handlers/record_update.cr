@@ -32,6 +32,16 @@ module MartenTurbo
           Marten::HTTP::Response::Found.new success_url
         end
       end
+
+      # Phase 2 M3: Turbo-aware failure path. See the matching override on
+      # `MartenTurbo::Handlers::RecordCreate#process_invalid_schema`.
+      def process_invalid_schema
+        if request.turbo? && (template_name = invalid_turbo_stream_name)
+          turbo_stream(template_name, context: context, status: 422)
+        else
+          super
+        end
+      end
     end
   end
 end

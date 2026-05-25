@@ -117,6 +117,78 @@ describe MartenTurbo::Handlers::RecordCreate do
       response.content.strip.should contain "</turbo-stream>"
     end
 
+    # H1 regression: prior `request.turbo?` matched `*/*`, so realistic browser
+    # POSTs (`Accept: text/html,…,*/*;q=0.8`) hit the Turbo branch and returned
+    # `text/vnd.turbo-stream.html` markup instead of a 302 redirect.
+    it "redirects to the success route on a realistic-browser Accept header (H1 regression)" do
+      request = Marten::HTTP::Request.new(
+        ::HTTP::Request.new(
+          method: "POST",
+          resource: "",
+          headers: HTTP::Headers{
+            "Host"         => "example.com",
+            "Content-Type" => "application/x-www-form-urlencoded",
+            "Accept"       => "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          body: "name=newtag"
+        )
+      )
+      handler = MartenTurbo::Handlers::RecordCreateSpec::TestHandler.new(request)
+
+      response = handler.post
+
+      response.should be_a Marten::HTTP::Response::Found
+      response.as(Marten::HTTP::Response::Found).headers["Location"].should eq Marten.routes.reverse("dummy")
+    end
+
+    # Phase 2 M3: a *failed* validation submitted by a Turbo client should
+    # render the configured `turbo_stream_name` template at 422 with the
+    # turbo-stream content type, so Turbo can swap the form in place. Non-
+    # Turbo requests still fall through to the parent's plain-template
+    # render at 422.
+    it "renders the invalid turbo stream template at 422 when schema validation fails on a Turbo request" do
+      request = Marten::HTTP::Request.new(
+        ::HTTP::Request.new(
+          method: "POST",
+          resource: "",
+          headers: HTTP::Headers{
+            "Host"         => "example.com",
+            "Content-Type" => "application/x-www-form-urlencoded",
+            "Accept"       => "text/vnd.turbo-stream.html",
+          },
+          body: "" # no `name` ⇒ schema invalid
+        )
+      )
+      handler = MartenTurbo::Handlers::RecordCreateSpec::TestInvalidFormHandler.new(request)
+
+      response = handler.post
+
+      response.status.should eq 422
+      response.content_type.should eq MartenTurbo::TURBO_CONTENT_TYPE
+      response.content.should contain "<turbo-stream action=\"replace\""
+    end
+
+    it "falls back to the plain template at 422 for non-Turbo failed validations" do
+      request = Marten::HTTP::Request.new(
+        ::HTTP::Request.new(
+          method: "POST",
+          resource: "",
+          headers: HTTP::Headers{
+            "Host"         => "example.com",
+            "Content-Type" => "application/x-www-form-urlencoded",
+            "Accept"       => "text/html",
+          },
+          body: ""
+        )
+      )
+      handler = MartenTurbo::Handlers::RecordCreateSpec::TestInvalidFormHandler.new(request)
+
+      response = handler.post
+
+      response.status.should eq 422
+      response.content_type.should_not eq MartenTurbo::TURBO_CONTENT_TYPE
+    end
+
     it "renders a Turbo Stream append action containing no record when a wrong template variable is given" do
       request = Marten::HTTP::Request.new(
         ::HTTP::Request.new(
@@ -175,5 +247,17 @@ module MartenTurbo::Handlers::RecordCreateSpec
     def turbo_stream
       MartenTurbo::TurboStream.append("messages", "<div>New Message</div>")
     end
+  end
+
+  # Phase 2 M3 fixture: configures an explicit `invalid_turbo_stream_name`
+  # so the failure-path spec doesn't depend on `turbo_stream_name` doubling
+  # as the failure template.
+  class TestInvalidFormHandler < MartenTurbo::Handlers::RecordCreate
+    model Tag
+    schema TagCreateSchema
+    success_route_name "dummy"
+    template_name "tags/create.html"
+    turbo_stream_name "tags/create.turbo_stream.html"
+    invalid_turbo_stream_name "tags/invalid_form.turbo_stream.html"
   end
 end

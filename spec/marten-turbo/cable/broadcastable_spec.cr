@@ -52,9 +52,33 @@ describe MartenTurbo::Broadcastable do
   end
 
   describe "#cable_stream_name" do
-    it "defaults to <classname_underscored>_<pk>" do
+    # Phase 2 M1+M2: previously this spec locked in the *broken* behaviour
+    # `broadcastedtag_<id>` (plain `downcase`), which disagreed with
+    # `broadcasts_to`'s `member:` default (`broadcasted_tag_<id>` — already
+    # `underscore`'d) and with what `dom_id` should produce. All three now
+    # go through `MartenTurbo.dom_class_name`, so this returns the proper
+    # snake_case form.
+    it "defaults to <classname_snake_case>_<pk>" do
       tag = BroadcastedTag.create!(name: "first")
-      tag.cable_stream_name.should eq("broadcastedtag_#{tag.id}")
+      tag.cable_stream_name.should eq("broadcasted_tag_#{tag.id}")
+    end
+  end
+
+  # Phase 2 M6: `_broadcast_update` / `_broadcast_delete` interpolate `pk!`
+  # (not the nilable `pk`) so an unpersisted record raises a clear
+  # `NilAssertionError` instead of silently publishing a target of
+  # `"broadcasted_tag_"` (which no element on the page can possibly match).
+  describe "broadcast target safety (pk!)" do
+    it "raises NilAssertionError when _broadcast_update is invoked on an unpersisted record" do
+      expect_raises(NilAssertionError) do
+        BroadcastedTag.new(name: "ghost").spec_invoke_broadcast_update
+      end
+    end
+
+    it "raises NilAssertionError when _broadcast_delete is invoked on an unpersisted record" do
+      expect_raises(NilAssertionError) do
+        BroadcastedTag.new(name: "ghost").spec_invoke_broadcast_delete
+      end
     end
   end
 end
