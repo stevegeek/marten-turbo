@@ -96,6 +96,30 @@ describe MartenTurbo::Handlers::RecordCreate do
       response.content.strip.should contain "<turbo-stream action=\"remove\" " \
                                             "target=\"tag_#{tag_1.pk!}\"></turbo-stream>"
     end
+
+    # H1 regression: prior `request.turbo?` matched `*/*`, so realistic browser
+    # POSTs returned `text/vnd.turbo-stream.html` markup instead of a redirect.
+    it "redirects to the success route on a realistic-browser Accept header (H1 regression)" do
+      tag_1 = Tag.create!(name: "Tag 1")
+
+      params = Marten::Routing::MatchParameters{"pk" => tag_1.pk!}
+      request = Marten::HTTP::Request.new(
+        ::HTTP::Request.new(
+          method: "GET",
+          resource: "",
+          headers: HTTP::Headers{
+            "Accept" => "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Host"   => "example.com",
+          }
+        )
+      )
+      handler = MartenTurbo::Handlers::RecordDeleteSpec::TestHandler.new(request, params)
+
+      response = handler.post
+
+      response.should be_a Marten::HTTP::Response::Found
+      Tag.get(pk: tag_1.pk).should be_nil
+    end
   end
 end
 

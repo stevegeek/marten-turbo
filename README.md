@@ -116,11 +116,24 @@ Empty output when both args resolve to defaults so it doesn't litter pages.
 Subscribe a page to a real-time broadcast stream. Pairs with `MartenTurbo.broadcast_*_to` (below) and the `MartenTurbo::Broadcastable` model concern.
 
 ```html
-{% turbo_stream_from "articles" %}     <!-- string stream name -->
-{% turbo_stream_from @room %}          <!-- Marten::Model — uses @room.cable_stream_name -->
+{% turbo_stream_from "articles" %}                              <!-- string stream name -->
+{% turbo_stream_from @room %}                                   <!-- Marten::Model — uses @room.cable_stream_name -->
+{% turbo_stream_from @room scope: current_user_identifier %}    <!-- per-user-scoped signature -->
 ```
 
 Renders a `<turbo-cable-stream-source>` custom element with an HMAC-signed stream name. The signature is verified server-side on subscribe so a hostile client can't subscribe to arbitrary streams just by guessing names.
+
+#### Scoping signatures to the Cable connection identity
+
+By default the channel binds every signature to `connection.identifier`, so a signed-stream-name minted for user A cannot be replayed by a different Cable-authenticated client (user B). To opt in to per-user scoping, pass `scope:` matching the value the host app sets on its `Cable::Connection` via `identified_by` / `self.identifier =`:
+
+```html
+{% turbo_stream_from @room scope: current_user_identifier %}
+```
+
+If a stream name is signed without `scope:` (the default), the channel will reject the subscription unless the connection identifier is *also* empty — and an empty identifier itself is now rejected outright, since it would let any client subscribe to any unscoped stream. **Recommended setup:** set `identified_by :identifier` on your `Cable::Connection`, populate it from the session in `connect`, and pass the same value as `scope:` everywhere you render `{% turbo_stream_from %}`.
+
+Omitting `scope:` is supported only as a backward-compat transition state for callers upgrading from earlier `marten-turbo` versions; per-user streams are *insecure* without it (a leaked signed name can be replayed).
 
 > **Note**: `<turbo-cable-stream-source>` is shipped with `@hotwired/turbo-rails`'s npm package, *not* with `@hotwired/turbo` itself. If your app uses just `@hotwired/turbo`, define an equivalent custom element (≈ 20 lines using `@rails/actioncable` + `Turbo.connectStreamSource`).
 
@@ -199,7 +212,12 @@ module ApplicationCable
     identified_by :identifier
 
     def connect
-      self.identifier = "anon"   # or read from session — see marten-cable docs
+      # Populate from your session — see marten-cable docs. The exact value
+      # you use here is also what you must pass as `scope:` to
+      # `{% turbo_stream_from … scope: … %}` so the channel can authorise
+      # subscribers. An empty identifier is now rejected by the
+      # `MartenTurbo::StreamsChannel`.
+      self.identifier = current_user_identifier_from_session
     end
   end
 end
@@ -251,6 +269,170 @@ class ArticleDeleteHandler < MartenTurbo::Handlers::RecordDelete
   end
 end
 ```
+
+## Divergences from Rails Turbo
+
+A few intentional gaps versus `turbo-rails` you may run into.
+
+### No `respond_to` content negotiation
+
+Marten doesn't ship a `respond_to`-style content negotiation helper, and
+this shard doesn't add one. The generic handlers branch purely on
+`request.turbo?` (an exact `Accept: text/vnd.turbo-stream.html` substring
+match plus a `Turbo-Frame` header fallback — `*/*` no longer counts since
+Phase 1's H1 fix). That covers the typical "Turbo or redirect" path well.
+
+If you need to serve multiple non-Turbo formats from one handler (HTML
+vs. JSON for the same action), one of:
+
+- inspect `request.headers["Accept"]` (or
+  `Marten::HTTP::Request#accepts?`) directly and branch in the handler,
+  noting the `*/*` semantics described above for Turbo Stream MIME;
+- look at Marten's `MIMEs` constants in
+  `Marten::HTTP::Request` (e.g. `MIMES["text/html"]`,
+  `MIMES["application/json"]`); or
+- write a custom handler that wraps the generic ones and dispatches per
+  format.
+
+A future shard release may add a `respond_to`-like DSL — track issues
+upstream.
+
+### No `broadcast_*_later_to` (no built-in job queue)
+
+`turbo-rails` ships `broadcast_replace_later_to`, `broadcast_append_later_to`,
+etc., backed by ActiveJob. Marten has no built-in job queue, so this
+shard's `MartenTurbo.broadcast_*_to` helpers and the `broadcasts_to` macro
+publish *synchronously* inside the model's `after_*_commit` callback.
+
+Two consequences:
+
+- A slow Cable backend (e.g. a Redis hop) adds latency to the request that
+  triggered the commit.
+- A backend failure used to take down the host's `create!` / `save!` with
+  the same exception (Phase 3 L7 narrowed this to a logged warning — see
+  `MartenTurbo.broadcast_*_to` source). The host operation now succeeds
+  even if the publish fails; subscribers just won't see the broadcast.
+
+If you've integrated an async job queue into your Marten app (e.g.
+[`mosquito-cr/mosquito`](https://github.com/mosquito-cr/mosquito) or a
+home-grown background worker), wrap the broadcast call in your job's
+`perform`:
+
+```crystal
+class BroadcastMessageAppendJob < Mosquito::QueuedJob
+  param message_id : Int64
+
+  def perform
+    message = Message.get(pk: message_id)
+    return if message.nil?
+
+    MartenTurbo.broadcast_append_to(
+      message.room.cable_stream_name,
+      target:  "messages",
+      partial: "messages/_message.html",
+      locals:  {"message" => message},
+    )
+  end
+end
+```
+
+…then enqueue from your host code instead of letting `broadcasts_to`'s
+synchronous callback fire. A future shard release may add a first-class
+`broadcasts_later_to` macro once an upstream Marten queue API exists.
+
+### Empty `connection.identifier` is rejected outright
+
+`turbo-rails` permits anonymous subscribers to public streams — any client that
+holds a valid Cable connection (even an unauthenticated one) can subscribe to
+a signed stream name as long as that name was signed with no scope. This
+shard deliberately diverges: `MartenTurbo::StreamsChannel#subscribed` rejects
+subscriptions whose `connection.identifier` is empty (`nil` or `""`).
+
+The rationale is the H2 fix from Phase 1: a leaked signed stream name is
+otherwise replayable across users. Binding every signature to
+`connection.identifier` shrinks the blast radius to a single Cable identity.
+An *empty* identifier would re-open the hole (any anonymous client could
+subscribe to any unscoped stream), so we reject it instead of silently
+allowing it.
+
+**Migration:** If you host public/anonymous Turbo streams, populate
+`connection.identifier` with a stable per-visitor token derived from the
+session (cookie-derived, even pre-login):
+
+```crystal
+class ApplicationCable::Connection < Cable::Connection
+  identified_by :identifier
+
+  def connect
+    # Even unauthenticated visitors get a stable per-session identifier so
+    # public stream subscriptions are not rejected.
+    self.identifier = cookies.encrypted["visitor_id"]? ||
+                      begin
+                        new_id = Random::Secure.urlsafe_base64(16)
+                        cookies.encrypted["visitor_id"] = new_id
+                        new_id
+                      end
+  end
+end
+```
+
+Alternatively, override `MartenTurbo::StreamsChannel#subscribed` in a host
+subclass to relax the check if you understand the trade-off.
+
+### Dot-syntax `turbo_stream.<action>` is *not* supported
+
+The undocumented `{% turbo_stream.append "tags" %}` form silently
+mis-parsed in earlier versions (the parser treated `"tags"` as the
+action and dropped `.append`). It is now rejected with a clear
+`Marten::Template::Errors::InvalidSyntax` at parse time — use the
+documented `{% turbo_stream "<action>" "<target>" %}` form everywhere:
+
+```html
+{% turbo_stream "append" "tags" partial: "tags/_tag.html" locals: {tag: tag} %}
+```
+
+## Custom Stream Actions
+
+Turbo's wire format treats `<turbo-stream action="…">` as an open extension
+point — bundled clients ship `append/prepend/replace/update/remove/before/after`
+plus `refresh` (Turbo 8), and host JS can register custom actions on the
+client side. `marten-turbo` ships the same eight built-ins
+(`MartenTurbo::TurboStream::ACTIONS`) and validates against that whitelist
+at runtime so an unknown action can't inject markup into the
+`action="…"` attribute.
+
+To allow a custom action (e.g. a `morph` action implemented by a host JS
+extension), register it once at boot:
+
+```crystal
+# config/initializers/marten_turbo.cr
+MartenTurbo::TurboStream.register_action("morph")
+```
+
+After registration:
+
+```crystal
+MartenTurbo::TurboStream.action("morph", "messages", "<div>hi</div>")
+# => <turbo-stream action="morph" target="messages"><template><div>hi</div></template></turbo-stream>
+```
+
+And inside templates:
+
+```html
+{% turbo_stream "morph" "messages" partial: "messages/_message.html" %}
+```
+
+Re-registering the same name is idempotent. Built-in actions cannot be
+removed.
+
+> **Heads-up:** `register_action` only affects the generic entry points
+> (`TurboStream.action`, the `{% turbo_stream %}` template tag). The
+> macro-generated convenience methods — `TurboStream#append`,
+> `MartenTurbo.broadcast_append_to`, etc. — iterate the compile-time
+> `ACTIONS` constant and so do not gain a matching `#morph` /
+> `broadcast_morph_to` automatically. Invoke custom actions through the
+> generic `.action(name, target, content)` form (or add a host-side
+> wrapper that calls `Cable.server.publish` with the rendered markup).
 
 ## Turbo Native
 

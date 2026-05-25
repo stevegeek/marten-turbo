@@ -1,3 +1,5 @@
+require "html"
+
 module MartenTurbo
   module Template
     module Tag
@@ -33,7 +35,11 @@ module MartenTurbo
         def render(context : Marten::Template::Context) : String
           builder = String::Builder.new
           builder << "<turbo-frame id=\""
-          builder << dom_id(@identifier_filter.resolve(context).raw)
+          # H3: HTML-escape the dom_id before interpolating into a double-quoted
+          # attribute. The dom_id source value may originate from user input
+          # (e.g. an unsaved model with a string PK pulled from params), so a
+          # `"` in the value would otherwise break out of the attribute.
+          builder << HTML.escape(dom_id(@identifier_filter.resolve(context).raw))
           builder << "\""
 
           @kwargs.each do |key, expression|
@@ -48,7 +54,10 @@ module MartenTurbo
             builder << ' '
             builder << key
             builder << "=\""
-            builder << value
+            # H3: HTML-escape every kwarg value. Without this, a `src:` value
+            # containing `"` (or `"><script>…`) would break out of the
+            # attribute and inject arbitrary HTML / script into the page.
+            builder << HTML.escape(value)
             builder << "\""
           end
 

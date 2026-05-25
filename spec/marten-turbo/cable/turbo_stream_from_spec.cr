@@ -21,7 +21,7 @@ describe "{% turbo_stream_from %}" do
   end
 
   it "raises on missing argument" do
-    expect_raises(Marten::Template::Errors::InvalidSyntax, /expected exactly one argument/) do
+    expect_raises(Marten::Template::Errors::InvalidSyntax, /expected the stream name as the first argument/) do
       Marten::Template::Template.new(%({% turbo_stream_from %}))
     end
   end
@@ -33,5 +33,25 @@ describe "{% turbo_stream_from %}" do
 
     match = rendered.match!(/signed-stream-name="([^"]+)"/)
     MartenTurbo::Verifier.verify(match[1]).should eq("from_var")
+  end
+
+  it "binds the signature to a scope when scope: is provided" do
+    template = Marten::Template::Template.new(%({% turbo_stream_from "messages" scope: scope_value %}))
+    context = Marten::Template::Context.from({"scope_value" => "user-42"})
+    rendered = template.render(context)
+
+    match = rendered.match!(/signed-stream-name="([^"]+)"/)
+    signed = match[1]
+
+    # Verifies only under the same scope; cross-scope and unscoped verify must fail.
+    MartenTurbo::Verifier.verify(signed, scope: "user-42").should eq("messages")
+    MartenTurbo::Verifier.verify(signed, scope: "user-43").should be_nil
+    MartenTurbo::Verifier.verify(signed).should be_nil
+  end
+
+  it "raises on unknown kwargs" do
+    expect_raises(Marten::Template::Errors::InvalidSyntax, /unknown kwarg/) do
+      Marten::Template::Template.new(%({% turbo_stream_from "messages" foo: "bar" %}))
+    end
   end
 end

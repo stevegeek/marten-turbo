@@ -60,5 +60,60 @@ describe MartenTurbo::Template::Tag::TurboFrame do
 
       content.should contain "<div>Body Content</div>"
     end
+
+    # H3 regression: kwarg values were raw-interpolated into double-quoted HTML
+    # attributes. A value containing `"` (or `"><script>…`) broke out of the
+    # attribute and let user-influenced context strings inject HTML / JS.
+    it "HTML-escapes the value of a src kwarg" do
+      parser = Marten::Template::Parser.new("<p>x</p>{% end_turbo_frame %}")
+      tag = MartenTurbo::Template::Tag::TurboFrame.new(parser, "turbo_frame 'tasks' src: src")
+
+      context = Marten::Template::Context{"src" => %(" onload="alert(1))}
+      content = tag.render(context)
+
+      content.should contain "&quot;"
+      content.should_not contain %(onload=")
+      content.should_not contain %(src="" onload)
+    end
+
+    it "HTML-escapes the value of a data-turbo-action kwarg" do
+      parser = Marten::Template::Parser.new("<p>x</p>{% end_turbo_frame %}")
+      tag = MartenTurbo::Template::Tag::TurboFrame.new(
+        parser,
+        "turbo_frame 'tasks' data-turbo-action: action_value"
+      )
+
+      context = Marten::Template::Context{"action_value" => %(advance"><script>alert(1)</script>)}
+      content = tag.render(context)
+
+      content.should contain "&quot;"
+      content.should contain "&lt;script&gt;"
+      content.should_not contain "<script>alert(1)</script>"
+    end
+
+    it "HTML-escapes the value of a custom data attribute" do
+      parser = Marten::Template::Parser.new("<p>x</p>{% end_turbo_frame %}")
+      tag = MartenTurbo::Template::Tag::TurboFrame.new(
+        parser,
+        "turbo_frame 'tasks' data-controller: controller_name"
+      )
+
+      context = Marten::Template::Context{"controller_name" => %(c" onmouseover="x())}
+      content = tag.render(context)
+
+      content.should contain "&quot;"
+      content.should_not contain %(onmouseover=")
+    end
+
+    it "HTML-escapes the dom_id when the identifier resolves to a string with quotes" do
+      parser = Marten::Template::Parser.new("<p>x</p>{% end_turbo_frame %}")
+      tag = MartenTurbo::Template::Tag::TurboFrame.new(parser, "turbo_frame ident")
+
+      context = Marten::Template::Context{"ident" => %(foo" onload="alert(1))}
+      content = tag.render(context)
+
+      content.should contain "&quot;"
+      content.should_not contain %(id="foo" onload=")
+    end
   end
 end
